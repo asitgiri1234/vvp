@@ -5,9 +5,7 @@ import com.example.paymentprocessor.dto.PaymentResponse;
 import com.example.paymentprocessor.dto.TransactionResponse;
 import com.example.paymentprocessor.entity.Transaction;
 import com.example.paymentprocessor.entity.TransactionStatus;
-import com.example.paymentprocessor.entity.Wallet;
 import com.example.paymentprocessor.repository.TransactionRepository;
-import com.example.paymentprocessor.repository.WalletRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -22,15 +20,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.springframework.dao.DataIntegrityViolationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
 
     @Mock
-    private WalletRepository walletRepository;
+    private TransactionRepository transactionRepository;
 
     @Mock
-    private TransactionRepository transactionRepository;
+    private PaymentTransactionProcessor transactionProcessor;
 
     @InjectMocks
     private PaymentServiceImpl paymentService;
@@ -38,25 +38,14 @@ class PaymentServiceTest {
     @Test
     void processesSuccessfulPayment() {
         PaymentRequest request = request("payment-1", "100.00");
-        Wallet sender = new Wallet("user-1", new BigDecimal("500.00"));
-        Wallet receiver = new Wallet("user-2", new BigDecimal("100.00"));
-        Transaction savedTransaction = new Transaction(
-                "user-1", "user-2", new BigDecimal("100.00"),
-                "payment-1", TransactionStatus.SUCCESS);
-
-        when(transactionRepository.findByIdempotencyKey("payment-1"))
-                .thenReturn(Optional.empty());
-        when(walletRepository.findByOwnerId("user-1")).thenReturn(Optional.of(sender));
-        when(walletRepository.findByOwnerId("user-2")).thenReturn(Optional.of(receiver));
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(savedTransaction);
+        when(transactionProcessor.process(request)).thenReturn(
+                new PaymentResponse(1L, TransactionStatus.SUCCESS, "Payment successful"));
 
         PaymentResponse response = paymentService.processPayment(request);
 
         assertThat(response.getStatus()).isEqualTo(TransactionStatus.SUCCESS);
         assertThat(response.getMessage()).isEqualTo("Payment successful");
-        assertThat(sender.getBalance()).isEqualByComparingTo("400.00");
-        assertThat(receiver.getBalance()).isEqualByComparingTo("200.00");
-        verify(transactionRepository).save(any(Transaction.class));
+        verify(transactionProcessor).process(request);
     }
 
     @Test
@@ -73,26 +62,41 @@ class PaymentServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(TransactionStatus.SUCCESS);
         assertThat(response.getMessage()).isEqualTo("Payment already processed");
-        verify(walletRepository, never()).findByOwnerId(any());
-        verify(transactionRepository, never()).save(any(Transaction.class));
+        verify(transactionProcessor, never()).process(any());
     }
 
     @Test
     void rejectsPaymentWhenBalanceIsInsufficient() {
         PaymentRequest request = request("payment-1", "600.00");
-        Wallet sender = new Wallet("user-1", new BigDecimal("500.00"));
-        Wallet receiver = new Wallet("user-2", new BigDecimal("100.00"));
-
-        when(transactionRepository.findByIdempotencyKey("payment-1"))
-                .thenReturn(Optional.empty());
-        when(walletRepository.findByOwnerId("user-1")).thenReturn(Optional.of(sender));
-        when(walletRepository.findByOwnerId("user-2")).thenReturn(Optional.of(receiver));
+        when(transactionProcessor.process(request)).thenReturn(
+                new PaymentResponse(null, TransactionStatus.FAILED, "Insufficient balance"));
 
         PaymentResponse response = paymentService.processPayment(request);
 
         assertThat(response.getStatus()).isEqualTo(TransactionStatus.FAILED);
         assertThat(response.getMessage()).isEqualTo("Insufficient balance");
-        verify(transactionRepository, never()).save(any(Transaction.class));
+    }
+
+    @Test
+    void returnsCommittedTransactionWhenUniqueKeyRaceIsDetected() {
+        PaymentRequest request = request("payment-1", "100.00");
+        Transaction existingTransaction = new Transaction(
+                "user-1", "user-2", new BigDecimal("100.00"),
+                "payment-1", TransactionStatus.SUCCESS);
+        when(transactionProcessor.process(request))
+                .thenThrow(new DataIntegrityViolationException("duplicate key"));
+        AtomicBoolean firstLookup = new AtomicBoolean(true);
+        when(transactionRepository.findByIdempotencyKey("payment-1"))
+                .thenAnswer(invocation -> firstLookup.getAndSet(false)
+                        ? Optional.empty()
+                        : Optional.of(existingTransaction));
+
+        PaymentResponse response = paymentService.processPayment(request);
+
+        assertThat(response.getStatus()).isEqualTo(TransactionStatus.SUCCESS);
+        assertThat(response.getMessage()).isEqualTo("Payment already processed");
+        verify(transactionRepository, org.mockito.Mockito.times(2))
+                .findByIdempotencyKey("payment-1");
     }
 
     @Test
@@ -127,6 +131,6 @@ class PaymentServiceTest {
 
     private void verifyNoRepositoryInteractions() {
         verify(transactionRepository, never()).findByIdempotencyKey(any());
-        verify(walletRepository, never()).findByOwnerId(any());
+        verify(transactionProcessor, never()).process(any());
     }
 }

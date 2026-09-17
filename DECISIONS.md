@@ -1,0 +1,5 @@
+Q1) How did you handle the concurrency race condition?
+ANS: Basically, when a wallet is accessed, the first transaction gets access to it and locks it so no other transaction can change it at the same time. It then checks the balance, and if there is enough money, the amount is deducted. This happens one transaction at a time, so once the balance is used up, the remaining transactions fail because there is not enough money.
+
+Q2) Where did your AI assistant give you an incorrect or sub-optimal suggestion?
+ANS: PowerShell on my local machine was installed at C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe, but the terminal was not able to find PowerShell because the path it was using did not contain the actual PowerShell location. Because of this, Maven was not able to start through the Maven wrapper

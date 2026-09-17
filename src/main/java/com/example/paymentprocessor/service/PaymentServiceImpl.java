@@ -5,9 +5,8 @@ import com.example.paymentprocessor.dto.PaymentResponse;
 import com.example.paymentprocessor.dto.TransactionResponse;
 import com.example.paymentprocessor.entity.Transaction;
 import com.example.paymentprocessor.entity.TransactionStatus;
-import com.example.paymentprocessor.entity.Wallet;
 import com.example.paymentprocessor.repository.TransactionRepository;
-import com.example.paymentprocessor.repository.WalletRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,18 +15,17 @@ import java.util.Optional;
 @Service
 public class PaymentServiceImpl implements PaymentService {
 
-    private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
+    private final PaymentTransactionProcessor transactionProcessor;
 
     public PaymentServiceImpl(
-            WalletRepository walletRepository,
-            TransactionRepository transactionRepository) {
-        this.walletRepository = walletRepository;
+            TransactionRepository transactionRepository,
+            PaymentTransactionProcessor transactionProcessor) {
         this.transactionRepository = transactionRepository;
+        this.transactionProcessor = transactionProcessor;
     }
 
     @Override
-    @Transactional
     public PaymentResponse processPayment(PaymentRequest request) {
         PaymentResponse validationError = validate(request);
         if (validationError != null) {
@@ -44,37 +42,16 @@ public class PaymentServiceImpl implements PaymentService {
                     "Payment already processed");
         }
 
-        Optional<Wallet> senderOptional =
-                walletRepository.findByOwnerId(request.getSenderId());
-        Optional<Wallet> receiverOptional =
-                walletRepository.findByOwnerId(request.getReceiverId());
-        if (senderOptional.isEmpty() || receiverOptional.isEmpty()) {
-            return failedResponse("Sender or receiver wallet not found");
+        try {
+            return transactionProcessor.process(request);
+        } catch (DataIntegrityViolationException exception) {
+            return transactionRepository.findByIdempotencyKey(request.getIdempotencyKey())
+                    .map(transaction -> new PaymentResponse(
+                            transaction.getId(),
+                            transaction.getStatus(),
+                            "Payment already processed"))
+                    .orElseThrow(() -> exception);
         }
-
-        Wallet sender = senderOptional.get();
-        Wallet receiver = receiverOptional.get();
-        if (sender.getBalance().compareTo(request.getAmount()) < 0) {
-            return failedResponse("Insufficient balance");
-        }
-
-        sender.setBalance(sender.getBalance().subtract(request.getAmount()));
-        receiver.setBalance(receiver.getBalance().add(request.getAmount()));
-        walletRepository.save(sender);
-        walletRepository.save(receiver);
-
-        Transaction transaction = new Transaction(
-                request.getSenderId(),
-                request.getReceiverId(),
-                request.getAmount(),
-                request.getIdempotencyKey(),
-                TransactionStatus.SUCCESS);
-        Transaction savedTransaction = transactionRepository.save(transaction);
-
-        return new PaymentResponse(
-                savedTransaction.getId(),
-                TransactionStatus.SUCCESS,
-                "Payment successful");
     }
 
     @Override
