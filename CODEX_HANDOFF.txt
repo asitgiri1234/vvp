@@ -58,22 +58,34 @@ different idempotency keys produced 5 successes and 5 insufficient-balance
 failures. This supports the existing pessimistic wallet locking behavior.
 
 9. Remaining limitations
-There is no transaction history/retrieval endpoint. Concurrent requests using
-the same new idempotency key still rely on the database unique constraint;
-that race is not separately handled here. The application still returns HTTP
-200 for business-level FAILED PaymentResponse results because that is the
-existing controller behavior.
+Concurrent requests using the same new idempotency key still rely on the
+database unique constraint; that race is not separately handled here.
+
+The next IDE diagnostics reported duplicate validate, failedResponse, and
+isBlank methods plus one syntax error in PaymentServiceImpl.java. The on-disk
+file had only one copy of each method; rewriting the file refreshed the
+language-server model, after which the service had no problems. Maven also
+reported BUILD SUCCESS. A separate pom.xml "project configuration is not
+up-to-date" diagnostic is IDE project-state metadata, not a Java compilation
+failure; reloading/updating the Maven project in the IDE may be required.
 
 10. Final commit
-The exact final commit hash and message are recorded in the final agent
-summary after the commit is created.
+The service fix commit hash and message are recorded in the final agent
+summary after the commit is created. This handoff update is intentionally
+kept local and is not included in the pushed commit.
 
 11. Git branch and remote
 Branch: main
 Remote: origin (GitHub repository asitgiri1234/vvp)
 
 12. NEXT STEP
-If API growth is needed, add a dedicated transaction response DTO and a
-GET /payments/{id} endpoint, then add controller/integration tests. For
-idempotency race hardening, handle the unique-constraint conflict and return
-the transaction associated with the key.
+For idempotency race hardening, handle the unique-constraint conflict and
+return the transaction associated with the key.
+
+13. Current implementation update
+Added GET /payments/{id} with a TransactionResponse DTO and 404 handling.
+Added MockMvc integration tests for successful payment, insufficient balance,
+duplicate idempotency key, validation failure, retrieval, and missing
+transactions. Payment failures now return HTTP 400 while successful and
+duplicate-success responses remain HTTP 200. Final verification: 12 tests,
+0 failures, 0 errors; BUILD SUCCESS.

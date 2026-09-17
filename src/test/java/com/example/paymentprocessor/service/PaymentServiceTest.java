@@ -2,6 +2,7 @@ package com.example.paymentprocessor.service;
 
 import com.example.paymentprocessor.dto.PaymentRequest;
 import com.example.paymentprocessor.dto.PaymentResponse;
+import com.example.paymentprocessor.dto.TransactionResponse;
 import com.example.paymentprocessor.entity.Transaction;
 import com.example.paymentprocessor.entity.TransactionStatus;
 import com.example.paymentprocessor.entity.Wallet;
@@ -102,6 +103,21 @@ class PaymentServiceTest {
         assertThat(response.getStatus()).isEqualTo(TransactionStatus.FAILED);
         assertThat(response.getMessage()).isEqualTo("Amount must be greater than zero");
         verifyNoRepositoryInteractions();
+    }
+
+    @Test
+    void retrievesTransactionWithoutExposingEntity() {
+        Transaction transaction = new Transaction(
+                "user-1", "user-2", new BigDecimal("100.00"),
+                "payment-1", TransactionStatus.SUCCESS);
+        when(transactionRepository.findById(42L)).thenReturn(Optional.of(transaction));
+
+        Optional<TransactionResponse> response = paymentService.findTransaction(42L);
+
+        assertThat(response).isPresent();
+        assertThat(response.get().getSenderId()).isEqualTo("user-1");
+        assertThat(response.get().getAmount()).isEqualByComparingTo("100.00");
+        assertThat(response.get()).isNotInstanceOf(Transaction.class);
     }
 
     private PaymentRequest request(String idempotencyKey, String amount) {

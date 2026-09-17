@@ -2,6 +2,7 @@ package com.example.paymentprocessor.service;
 
 import com.example.paymentprocessor.dto.PaymentRequest;
 import com.example.paymentprocessor.dto.PaymentResponse;
+import com.example.paymentprocessor.dto.TransactionResponse;
 import com.example.paymentprocessor.entity.Transaction;
 import com.example.paymentprocessor.entity.TransactionStatus;
 import com.example.paymentprocessor.entity.Wallet;
@@ -74,6 +75,19 @@ public class PaymentServiceImpl implements PaymentService {
                 savedTransaction.getId(),
                 TransactionStatus.SUCCESS,
                 "Payment successful");
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<TransactionResponse> findTransaction(Long transactionId) {
+        return transactionRepository.findById(transactionId)
+                .map(transaction -> new TransactionResponse(
+                        transaction.getId(),
+                        transaction.getSenderId(),
+                        transaction.getReceiverId(),
+                        transaction.getAmount(),
+                        transaction.getIdempotencyKey(),
+                        transaction.getStatus()));
     }
 
     private PaymentResponse validate(PaymentRequest request) {
