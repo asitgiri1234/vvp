@@ -1,6 +1,5 @@
 package com.example.paymentprocessor.service;
 
-import org.springframework.transaction.annotation.Transactional;
 import com.example.paymentprocessor.dto.PaymentRequest;
 import com.example.paymentprocessor.dto.PaymentResponse;
 import com.example.paymentprocessor.entity.Transaction;
@@ -9,6 +8,7 @@ import com.example.paymentprocessor.entity.Wallet;
 import com.example.paymentprocessor.repository.TransactionRepository;
 import com.example.paymentprocessor.repository.WalletRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -21,7 +21,6 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentServiceImpl(
             WalletRepository walletRepository,
             TransactionRepository transactionRepository) {
-
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
     }
@@ -29,61 +28,37 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public PaymentResponse processPayment(PaymentRequest request) {
-
         PaymentResponse validationError = validate(request);
         if (validationError != null) {
             return validationError;
         }
 
         Optional<Transaction> existingTransaction =
-                transactionRepository.findByIdempotencyKey(
-                        request.getIdempotencyKey()
-                );
-
+                transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
         if (existingTransaction.isPresent()) {
-
             Transaction transaction = existingTransaction.get();
-
             return new PaymentResponse(
                     transaction.getId(),
                     transaction.getStatus(),
-                    "Payment already processed"
-            );
+                    "Payment already processed");
         }
 
         Optional<Wallet> senderOptional =
                 walletRepository.findByOwnerId(request.getSenderId());
-
         Optional<Wallet> receiverOptional =
                 walletRepository.findByOwnerId(request.getReceiverId());
-
         if (senderOptional.isEmpty() || receiverOptional.isEmpty()) {
-            return new PaymentResponse(
-                    null,
-                    TransactionStatus.FAILED,
-                    "Sender or receiver wallet not found"
-            );
+            return failedResponse("Sender or receiver wallet not found");
         }
 
         Wallet sender = senderOptional.get();
         Wallet receiver = receiverOptional.get();
-
         if (sender.getBalance().compareTo(request.getAmount()) < 0) {
-            return new PaymentResponse(
-                    null,
-                    TransactionStatus.FAILED,
-                    "Insufficient balance"
-            );
+            return failedResponse("Insufficient balance");
         }
 
-        sender.setBalance(
-                sender.getBalance().subtract(request.getAmount())
-        );
-
-        receiver.setBalance(
-                receiver.getBalance().add(request.getAmount())
-        );
-
+        sender.setBalance(sender.getBalance().subtract(request.getAmount()));
+        receiver.setBalance(receiver.getBalance().add(request.getAmount()));
         walletRepository.save(sender);
         walletRepository.save(receiver);
 
@@ -92,17 +67,13 @@ public class PaymentServiceImpl implements PaymentService {
                 request.getReceiverId(),
                 request.getAmount(),
                 request.getIdempotencyKey(),
-                TransactionStatus.SUCCESS
-        );
-
-        Transaction savedTransaction =
-                transactionRepository.save(transaction);
+                TransactionStatus.SUCCESS);
+        Transaction savedTransaction = transactionRepository.save(transaction);
 
         return new PaymentResponse(
                 savedTransaction.getId(),
                 TransactionStatus.SUCCESS,
-                "Payment successful"
-        );
+                "Payment successful");
     }
 
     private PaymentResponse validate(PaymentRequest request) {
