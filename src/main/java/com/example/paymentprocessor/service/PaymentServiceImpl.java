@@ -28,6 +28,22 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentResponse processPayment(PaymentRequest request) {
 
+        Optional<Transaction> existingTransaction =
+                transactionRepository.findByIdempotencyKey(
+                        request.getIdempotencyKey()
+                );
+
+        if (existingTransaction.isPresent()) {
+
+            Transaction transaction = existingTransaction.get();
+
+            return new PaymentResponse(
+                    transaction.getId(),
+                    transaction.getStatus(),
+                    "Payment already processed"
+            );
+        }
+
         Optional<Wallet> senderOptional =
                 walletRepository.findByOwnerId(request.getSenderId());
 
