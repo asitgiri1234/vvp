@@ -1,5 +1,7 @@
 package com.example.paymentprocessor.entity;
 
+
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -24,7 +26,8 @@ public class Transaction {
 
     private BigDecimal amount;
 
-    private String idempotencyKey;
+    @Column(unique = true, nullable = false)
+private String idempotencyKey;
 
     @Enumerated(EnumType.STRING)
     private TransactionStatus status;

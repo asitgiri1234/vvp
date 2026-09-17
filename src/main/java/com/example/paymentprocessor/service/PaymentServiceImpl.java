@@ -1,5 +1,6 @@
 package com.example.paymentprocessor.service;
 
+import org.springframework.transaction.annotation.Transactional;
 import com.example.paymentprocessor.dto.PaymentRequest;
 import com.example.paymentprocessor.dto.PaymentResponse;
 import com.example.paymentprocessor.entity.Transaction;
@@ -26,6 +27,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    @Transactional
     public PaymentResponse processPayment(PaymentRequest request) {
 
         Optional<Transaction> existingTransaction =
