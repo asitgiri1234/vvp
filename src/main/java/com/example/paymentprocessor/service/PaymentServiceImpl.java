@@ -30,6 +30,11 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public PaymentResponse processPayment(PaymentRequest request) {
 
+        PaymentResponse validationError = validate(request);
+        if (validationError != null) {
+            return validationError;
+        }
+
         Optional<Transaction> existingTransaction =
                 transactionRepository.findByIdempotencyKey(
                         request.getIdempotencyKey()
@@ -98,5 +103,35 @@ public class PaymentServiceImpl implements PaymentService {
                 TransactionStatus.SUCCESS,
                 "Payment successful"
         );
+    }
+
+    private PaymentResponse validate(PaymentRequest request) {
+        if (request == null) {
+            return failedResponse("Payment request is required");
+        }
+        if (request.getAmount() == null || request.getAmount().signum() <= 0) {
+            return failedResponse("Amount must be greater than zero");
+        }
+        if (isBlank(request.getSenderId())) {
+            return failedResponse("Sender ID is required");
+        }
+        if (isBlank(request.getReceiverId())) {
+            return failedResponse("Receiver ID is required");
+        }
+        if (isBlank(request.getIdempotencyKey())) {
+            return failedResponse("Idempotency key is required");
+        }
+        if (request.getSenderId().equals(request.getReceiverId())) {
+            return failedResponse("Sender and receiver must be different");
+        }
+        return null;
+    }
+
+    private PaymentResponse failedResponse(String message) {
+        return new PaymentResponse(null, TransactionStatus.FAILED, message);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
